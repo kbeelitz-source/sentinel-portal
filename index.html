@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sentinel Portal</title>
+  <meta name="theme-color" content="#020617">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <style>
+    body { -webkit-tap-highlight-color: transparent; }
+    #printArea { display: none; }
+    #printArea table.print-shell { border: none; }
+    #printArea table.print-shell > thead > tr > td,
+    #printArea table.print-shell > tbody > tr > td,
+    #printArea table.print-shell > tfoot > tr > td { border: none; padding: 0; }
+    @media print {
+      body > *:not(#printArea) { display: none !important; }
+      #printArea { display: block !important; }
+      #printArea h2 { page-break-after: avoid; }
+      #printArea tr { page-break-inside: avoid; }
+      #printArea table.print-shell > thead > tr,
+      #printArea table.print-shell > tbody > tr,
+      #printArea table.print-shell > tfoot > tr { page-break-inside: auto; }
+      #printArea thead { display: table-header-group; }
+      #printArea tfoot { display: table-footer-group; }
+      @page { size: letter; margin: 1in; }
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased">
+
+  <!-- Header -->
+  <header class="bg-slate-900 border-b border-slate-800 px-4 py-3 sticky top-0 z-30 flex items-center justify-between gap-3">
+    <div>
+      <h1 class="text-base font-bold tracking-tight leading-tight">Sentinel Portal</h1>
+      <p class="text-xs text-slate-400">Flag review for Lydia's phone</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <span id="userChip" class="hidden text-[11px] text-slate-300 font-medium"></span>
+      <button id="navFeedBtn" class="hidden text-xs bg-slate-800 hover:bg-slate-700 text-white font-medium px-3 py-2 rounded-lg">Flags</button>
+      <button id="navSettingsBtn" class="hidden text-xs bg-slate-800 hover:bg-slate-700 text-white font-medium px-3 py-2 rounded-lg">Settings</button>
+      <button id="signOutBtn" class="hidden text-xs bg-slate-800 hover:bg-slate-700 text-white font-medium px-3 py-2 rounded-lg">Sign out</button>
+    </div>
+  </header>
+
+  <div class="max-w-5xl mx-auto px-4 py-4">
+    <div class="bg-amber-950/60 border border-amber-800 text-amber-200 text-xs rounded-lg px-3 py-2 mb-4">
+      Sentinel reports only — it cannot block anything. Roblox in-game chat is not visible to Sentinel.
+    </div>
+
+    <div id="configError" class="hidden bg-red-950 border border-red-800 text-red-200 text-sm rounded-lg px-3 py-2 mb-4">
+      Portal is not configured yet. Fill in SUPABASE_URL and SUPABASE_ANON_KEY in config.js (see SETUP.md), then reload.
+    </div>
+
+    <!-- Sign-in -->
+    <section id="authView" class="max-w-md mx-auto bg-slate-900 border border-slate-800 rounded-xl p-5">
+      <h2 class="text-sm font-bold mb-3">Sign in</h2>
+      <label class="block text-xs text-slate-400 mb-1" for="signInEmail">Email</label>
+      <input id="signInEmail" type="email" autocomplete="username" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm mb-3" placeholder="Owner email">
+      <label class="block text-xs text-slate-400 mb-1" for="signInPassword">Password</label>
+      <input id="signInPassword" type="password" autocomplete="current-password" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm mb-4" placeholder="Password">
+      <button id="signInBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3 py-2 rounded-lg">Sign in</button>
+      <p id="signInError" class="text-xs text-red-400 mt-3"></p>
+    </section>
+
+    <!-- App -->
+    <main id="appView" class="hidden">
+
+      <!-- Feed view -->
+      <section id="feedView">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 mb-4">
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1" for="filterSeverity">Severity</label>
+              <select id="filterSeverity" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-sm">
+                <option value="">All</option>
+                <option value="URGENT">URGENT</option>
+                <option value="HIGH">HIGH</option>
+                <option value="MEDIUM">MEDIUM</option>
+                <option value="LOW">LOW</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1" for="filterCategory">Category</label>
+              <select id="filterCategory" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-sm">
+                <option value="">All</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1" for="filterSearch">Search snippet / contact</label>
+              <input id="filterSearch" type="search" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-sm" placeholder="Search…">
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1" for="filterFrom">From</label>
+              <input id="filterFrom" type="date" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-sm">
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1" for="filterTo">To</label>
+              <input id="filterTo" type="date" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-2 text-sm">
+            </div>
+            <div class="flex items-end gap-2">
+              <button id="clearFiltersBtn" class="text-xs bg-slate-800 hover:bg-slate-700 text-white font-medium px-3 py-2 rounded-lg">Clear filters</button>
+              <button id="refreshBtn" class="text-xs bg-slate-800 hover:bg-slate-700 text-white font-medium px-3 py-2 rounded-lg">Refresh</button>
+            </div>
+          </div>
+          <label class="flex items-center gap-2 text-xs text-slate-400 mt-3">
+            <input id="autoRefreshToggle" type="checkbox" checked class="accent-blue-600">
+            Auto-refresh every 30 seconds
+          </label>
+          <div class="flex flex-wrap items-center gap-2 mt-4">
+            <button id="exportDocxBtn" class="text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium px-3 py-2 rounded-lg">Export Word (.docx)</button>
+            <button id="exportPdfBtn" class="text-xs bg-slate-800 hover:bg-slate-700 text-white font-medium px-3 py-2 rounded-lg">Export PDF (print)</button>
+            <span id="exportStatus" class="text-xs text-slate-400"></span>
+          </div>
+          <p class="text-[11px] text-slate-500 mt-2">Exports cover the currently filtered flags only.</p>
+        </div>
+
+        <div class="flex items-center justify-between mb-2">
+          <p id="flagsCount" class="text-xs text-slate-400"></p>
+          <p id="feedStatus" class="text-xs text-slate-500"></p>
+        </div>
+        <div id="flagsList" class="space-y-2 mb-4"></div>
+
+        <!-- Detail panel -->
+        <section id="detailPanel" class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <p id="detailEmpty" class="text-sm text-slate-400">Select a flag to see the full item.</p>
+          <div id="detailContent" class="hidden">
+            <div class="flex items-start justify-between gap-3">
+              <h2 id="detailTitle" class="text-sm font-bold"></h2>
+              <span id="detailSeverity" class="text-[11px] font-bold px-2 py-1 rounded"></span>
+            </div>
+            <p id="detailMeta" class="text-xs text-slate-400 mt-2 whitespace-pre-line"></p>
+            <h3 class="text-xs font-bold text-slate-300 mt-4 mb-1">Snippet</h3>
+            <p id="detailSnippet" class="text-sm whitespace-pre-wrap break-words"></p>
+            <h3 class="text-xs font-bold text-slate-300 mt-4 mb-1">Full text</h3>
+            <p id="detailFullText" class="text-sm whitespace-pre-wrap break-words"></p>
+            <h3 class="text-xs font-bold text-slate-300 mt-4 mb-1">Context</h3>
+            <p id="detailContext" class="text-sm whitespace-pre-wrap break-words"></p>
+            <h3 class="text-xs font-bold text-slate-300 mt-4 mb-1">Notes</h3>
+            <p id="detailAnnotations" class="text-sm"></p>
+            <div class="border-t border-slate-800 mt-5 pt-4">
+              <h3 class="text-xs font-bold text-slate-300 mb-1">AI check (advisory only)</h3>
+              <p id="detailAi" class="text-sm whitespace-pre-wrap"></p>
+              <div class="flex flex-wrap items-center gap-2 mt-3">
+                <button id="aiCheckBtn" class="text-xs bg-violet-600 hover:bg-violet-700 text-white font-medium px-3 py-2 rounded-lg">AI check</button>
+                <span id="aiStatus" class="text-xs text-slate-400"></span>
+              </div>
+            </div>
+            <div class="border-t border-slate-800 mt-5 pt-4">
+              <button id="deleteFlagBtn" class="text-xs bg-red-700 hover:bg-red-600 text-white font-medium px-3 py-2 rounded-lg">Delete this flag</button>
+              <span id="deleteStatus" class="text-xs text-slate-400 ml-2"></span>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <!-- Settings view -->
+      <section id="settingsView" class="hidden max-w-xl">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+          <h2 class="text-sm font-bold mb-2">Settings</h2>
+          <p class="text-xs text-slate-400 mb-3">Gemini key for AI check. Use a key from your paid AI Studio project. The key is stored only in the portal_settings table in your Supabase project — never in this site's files.</p>
+          <p id="settingsKeyState" class="text-xs text-slate-300 mb-3"></p>
+          <label class="block text-xs text-slate-400 mb-1" for="geminiKeyInput">Gemini API key</label>
+          <input id="geminiKeyInput" type="password" autocomplete="off" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm mb-3" placeholder="Paste Gemini key">
+          <button id="saveSettingsBtn" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3 py-2 rounded-lg">Save key</button>
+          <p id="settingsStatus" class="text-xs text-slate-400 mt-3"></p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="printArea"></div>
+
+  <script>
+    'use strict';
+    // ---------- config / client ----------
+    const cfg = window.SENTINEL_CONFIG || {};
+    const sb = (cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY && window.supabase)
+      ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY)
+      : null;
+    if (!sb) document.getElementById('configError').classList.remove('hidden');
+
+    // ---------- state ----------
+    let allFlags = [];
+    let filteredFlags = [];
+    let selectedId = null;
+
+    // ---------- helpers ----------
+    function escHtml(s) {
+      return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function fmtChicago(iso) {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return '—';
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Chicago', year: 'numeric', month: 'short', day: 'numeric',
+        hour: 'numeric', minute: '2-digit', second: '2-digit', timeZoneName: 'short'
+      }).format(d);
+    }
+    function severityClass(sev) {
+      switch (String(sev || '').toUpperCase()) {
+        case 'URGENT': return 'bg-red-600 text-white';
+        case 'HIGH': return 'bg-orange-600 text-white';
+        case 'MEDIUM': return 'bg-amber-500 text-slate-950';
+        case 'LOW': return 'bg-slate-700 text-slate-200';
+        default: return 'bg-slate-700 text-slate-200';
+      }
+    }
+    const ANNOTATION_LABELS = {
+      unknown_sender: 'Unknown sender',
+      late_night: 'Late night',
+      new_contact: 'New contact',
+      deleted_thread: 'Deleted thread',
+      photo_request: 'Photo requested',
+      move_platform: 'Asked to move to another app',
+      gift_offer: 'Gift / money offered',
+      secrecy: 'Secrecy language'
+    };
+    function annotationLabel(a) {
+      const key = String(a == null ? '' : a);
+      if (ANNOTATION_LABELS[key]) return ANNOTATION_LABELS[key];
+      return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
+    function annotationsText(flag) {
+      const list = Array.isArray(flag.annotations) ? flag.annotations : [];
+      return list.length ? list.map(annotationLabel).join(', ') : 'None';
+    }
+    function selectedFlag() {
+      return allFlags.find(f => f.id === selectedId) || null;
+    }
+
+    // ---------- auth ----------
+    function showSignedIn(email) {
+      document.getElementById('authView').classList.add('hidden');
+      document.getElementById('appView').classList.remove('hidden');
+      document.getElementById('signOutBtn').classList.remove('hidden');
+      document.getElementById('navFeedBtn').classList.remove('hidden');
+      document.getElementById('navSettingsBtn').classList.remove('hidden');
+      const chip = document.getElementById('userChip');
+      chip.textContent = email || '';
+      chip.classList.remove('hidden');
+      loadFlags();
+      loadSettingsState();
+    }
+    function showSignedOut() {
+      document.getElementById('authView').classList.remove('hidden');
+      document.getElementById('appView').classList.add('hidden');
+      document.getElementById('signOutBtn').classList.add('hidden');
+      document.getElementById('navFeedBtn').classList.add('hidden');
+      document.getElementById('navSettingsBtn').classList.add('hidden');
+      document.getElementById('userChip').classList.add('hidden');
+    }
+    async function initAuth() {
+      if (!sb) return;
+      const { data } = await sb.auth.getSession();
+      if (data && data.session) showSignedIn(data.session.user.email);
+      else showSignedOut();
+      sb.auth.onAuthStateChange((_event, session) => {
+        if (session) showSignedIn(session.user.email);
+        else showSignedOut();
+      });
+    }
+    document.getElementById('signInBtn').addEventListener('click', async () => {
+      const errEl = document.getElementById('signInError');
+      errEl.textContent = '';
+      if (!sb) { errEl.textContent = 'Portal is not configured yet (config.js).'; return; }
+      const email = document.getElementById('signInEmail').value.trim();
+      const password = document.getElementById('signInPassword').value;
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) errEl.textContent = error.message;
+    });
+    document.getElementById('signInPassword').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('signInBtn').click();
+    });
+    document.getElementById('signOutBtn').addEventListener('click', async () => {
+      if (sb) await sb.auth.signOut();
+    });
+
+    // ---------- view switching ----------
+    function showView(name) {
+      document.getElementById('feedView').classList.toggle('hidden', name !== 'feed');
+      document.getElementById('settingsView').classList.toggle('hidden', name !== 'settings');
+    }
+    document.getElementById('navFeedBtn').addEventListener('click', () => showView('feed'));
+    document.getElementById('navSettingsBtn').addEventListener('click', () => showView('settings'));
+
+    // ---------- feed ----------
+    async function loadFlags() {
+      if (!sb) return;
+      document.getElementById('feedStatus').textContent = 'Loading…';
+      const { data, error } = await sb.from('flags')
+        .select('*')
+        .order('received_at', { ascending: false })
+        .limit(500);
+      if (error) {
+        document.getElementById('feedStatus').textContent = 'Load failed: ' + error.message;
+        return;
+      }
+      allFlags = data || [];
+      rebuildCategoryFilter();
+      applyFilters();
+      document.getElementById('feedStatus').textContent = 'Updated ' + fmtChicago(new Date().toISOString());
+    }
+    function rebuildCategoryFilter() {
+      const sel = document.getElementById('filterCategory');
+      const current = sel.value;
+      const cats = Array.from(new Set(allFlags.map(f => f.category).filter(Boolean))).sort();
+      sel.innerHTML = '<option value="">All</option>' + cats.map(c => '<option value="' + escHtml(c) + '">' + escHtml(c) + '</option>').join('');
+      if (cats.includes(current)) sel.value = current;
+    }
+    function applyFilters() {
+      const sev = document.getElementById('filterSeverity').value;
+      const cat = document.getElementById('filterCategory').value;
+      const from = document.getElementById('filterFrom').value;
+      const to = document.getElementById('filterTo').value;
+      const q = document.getElementById('filterSearch').value.trim().toLowerCase();
+      const fromTs = from ? new Date(from + 'T00:00:00') : null;
+      const toTs = to ? new Date(to + 'T23:59:59.999') : null;
+      filteredFlags = allFlags.filter(f => {
+        if (sev && String(f.severity || '').toUpperCase() !== sev) return false;
+        if (cat && f.category !== cat) return false;
+        if (q) {
+          const hay = ((f.snippet || '') + ' ' + (f.contact_label || '') + ' ' + (f.address || '')).toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        if (fromTs || toTs) {
+          const t = new Date(f.device_ts || f.received_at);
+          if (isNaN(t.getTime())) return false;
+          if (fromTs && t < fromTs) return false;
+          if (toTs && t > toTs) return false;
+        }
+        return true;
+      });
+      renderList();
+      const sel = selectedFlag();
+      if (sel && filteredFlags.some(f => f.id === sel.id)) renderDetail(sel);
+      else if (sel && !filteredFlags.some(f => f.id === sel.id)) { selectedId = null; renderDetail(null); }
+    }
+    function renderList() {
+      const list = document.getElementById('flagsList');
+      document.getElementById('flagsCount').textContent =
+        filteredFlags.length + ' flag' + (filteredFlags.length === 1 ? '' : 's') + ' shown · ' + allFlags.length + ' loaded';
+      if (!filteredFlags.length) {
+        list.innerHTML = '<p class="text-sm text-slate-400 bg-slate-900 border border-slate-800 rounded-xl px-4 py-3">No flags match.</p>';
+        return;
+      }
+      list.innerHTML = filteredFlags.map(f =>
+        '<button type="button" data-flag-id="' + escHtml(f.id) + '" class="w-full text-left bg-slate-900 border ' +
+        (f.id === selectedId ? 'border-blue-500' : 'border-slate-800') + ' rounded-xl px-4 py-3 hover:border-slate-600">' +
+          '<span class="flex items-center justify-between gap-2">' +
+            '<span class="text-sm font-medium truncate">' + escHtml(f.contact_label || f.address || '(no contact)') + '</span>' +
+            '<span class="text-[11px] font-bold px-2 py-1 rounded ' + severityClass(f.severity) + '">' + escHtml(f.severity || '') + '</span>' +
+          '</span>' +
+          '<span class="block text-xs text-slate-400 mt-1">' + escHtml(f.category || '') + ' · ' + escHtml(f.source || '') + ' · ' + escHtml(fmtChicago(f.device_ts || f.received_at)) + '</span>' +
+          '<span class="block text-sm text-slate-200 mt-1 truncate">' + escHtml(f.snippet || '') + '</span>' +
+          (f.ai_verdict ? '<span class="block text-xs text-violet-300 mt-1">AI (advisory): ' + escHtml(f.ai_verdict) + '</span>' : '') +
+        '</button>'
+      ).join('');
+      list.querySelectorAll('[data-flag-id]').forEach(el => {
+        el.addEventListener('click', () => {
+          selectedId = el.getAttribute('data-flag-id');
+          renderList();
+          renderDetail(selectedFlag());
+          document.getElementById('detailPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      });
+    }
+    function renderDetail(f) {
+      const empty = document.getElementById('detailEmpty');
+      const content = document.getElementById('detailContent');
+      if (!f) { empty.classList.remove('hidden'); content.classList.add('hidden'); return; }
+      empty.classList.add('hidden');
+      content.classList.remove('hidden');
+      document.getElementById('detailTitle').textContent = (f.category || 'Flag') + ' — ' + (f.contact_label || f.address || '');
+      const sevEl = document.getElementById('detailSeverity');
+      sevEl.textContent = f.severity || '';
+      sevEl.className = 'text-[11px] font-bold px-2 py-1 rounded ' + severityClass(f.severity);
+      document.getElementById('detailMeta').textContent =
+        'Source: ' + (f.source || '') + (f.app_pkg ? ' (' + f.app_pkg + ')' : '') + '\n' +
+        'Contact: ' + (f.contact_label || '') + (f.address ? ' · ' + f.address : '') + '\n' +
+        'Direction: ' + (f.direction || '') + '\n' +
+        'Rule matched: ' + (f.rule || '') + '\n' +
+        'Device time: ' + fmtChicago(f.device_ts) + '\n' +
+        'Received: ' + fmtChicago(f.received_at);
+      document.getElementById('detailSnippet').textContent = f.snippet || '—';
+      document.getElementById('detailFullText').textContent = f.full_text || '—';
+      document.getElementById('detailContext').textContent = f.context || '—';
+      document.getElementById('detailAnnotations').textContent = annotationsText(f);
+      document.getElementById('aiStatus').textContent = '';
+      document.getElementById('deleteStatus').textContent = '';
+      renderAi(f);
+    }
+    function renderAi(f) {
+      const el = document.getElementById('detailAi');
+      if (f && f.ai_verdict) {
+        el.textContent =
+          'Classification: ' + f.ai_verdict + '\n' +
+          'Summary: ' + (f.ai_summary || '') + '\n' +
+          'Suggested action: ' + (f.ai_action || '') + '\n' +
+          'Checked: ' + fmtChicago(f.ai_at) + '\n' +
+          'Advisory only — not a finding of fact.';
+      } else {
+        el.textContent = 'No AI check yet for this flag.';
+      }
+    }
+    ['filterSeverity', 'filterCategory', 'filterFrom', 'filterTo', 'filterSearch'].forEach(id => {
+      document.getElementById(id).addEventListener('input', applyFilters);
+      document.getElementById(id).addEventListener('change', applyFilters);
+    });
+    document.getElementById('clearFiltersBtn').addEventListener('click', () => {
+      document.getElementById('filterSeverity').value = '';
+      document.getElementById('filterCategory').value = '';
+      document.getElementById('filterFrom').value = '';
+      document.getElementById('filterTo').value = '';
+      document.getElementById('filterSearch').value = '';
+      applyFilters();
+    });
+    document.getElementById('refreshBtn').addEventListener('click', loadFlags);
+    setInterval(() => {
+      if (document.getElementById('autoRefreshToggle').checked &&
+          !document.getElementById('appView').classList.contains('hidden') &&
+          !document.getElementById('feedView').classList.contains('hidden')) loadFlags();
+    }, 30000);
+
+    // ---------- AI check ----------
+    document.getElementById('aiCheckBtn').addEventListener('click', async () => {
+      const f = selectedFlag();
+      const status = document.getElementById('aiStatus');
+      if (!f || !sb) return;
+      status.textContent = 'Running AI check…';
+      const { data, error } = await sb.functions.invoke('ai-check', { body: { flag_id: f.id } });
+      if (error) {
+        let msg = error.message || 'AI check failed';
+        try {
+          if (error.context && typeof error.context.json === 'function') {
+            const j = await error.context.json();
+            if (j && j.error) msg = j.error;
+          }
+        } catch (e) { /* keep the generic message */ }
+        status.textContent = 'AI check failed: ' + msg;
+        return;
+      }
+      if (data && data.error) { status.textContent = 'AI check failed: ' + data.error; return; }
+      f.ai_verdict = data.ai_verdict;
+      f.ai_summary = data.ai_summary;
+      f.ai_action = data.ai_action;
+      f.ai_at = data.ai_at;
+      status.textContent = 'Done.';
+      renderAi(f);
+      renderList();
+    });
+
+    // ---------- delete ----------
+    document.getElementById('deleteFlagBtn').addEventListener('click', async () => {
+      const f = selectedFlag();
+      if (!f || !sb) return;
+      if (!confirm('Delete this flag from the portal? This cannot be undone. The on-device log on the phone is not affected.')) return;
+      const { error } = await sb.from('flags').delete().eq('id', f.id);
+      const status = document.getElementById('deleteStatus');
+      if (error) { status.textContent = 'Delete failed: ' + error.message; return; }
+      allFlags = allFlags.filter(x => x.id !== f.id);
+      selectedId = null;
+      applyFilters();
+      renderDetail(null);
+    });
+
+    // ---------- settings ----------
+    async function loadSettingsState() {
+      if (!sb) return;
+      const el = document.getElementById('settingsKeyState');
+      const { data, error } = await sb.from('portal_settings').select('gemini_key, updated_at').eq('id', 1).single();
+      if (error) { el.textContent = 'Could not read settings: ' + error.message; return; }
+      el.textContent = (data && data.gemini_key)
+        ? 'A Gemini key is on file. Paste a new key only to replace it.'
+        : 'No Gemini key on file yet — AI check will not run until one is saved.';
+    }
+    document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
+      const status = document.getElementById('settingsStatus');
+      if (!sb) return;
+      const key = document.getElementById('geminiKeyInput').value.trim();
+      if (!key) { status.textContent = 'Paste a Gemini key first.'; return; }
+      const { error } = await sb.from('portal_settings')
+        .upsert({ id: 1, gemini_key: key, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+      if (error) { status.textContent = 'Save failed: ' + error.message; return; }
+      document.getElementById('geminiKeyInput').value = '';
+      status.textContent = 'Gemini key saved.';
+      loadSettingsState();
+    });
+
+    // ---------- shared export helpers (locked Word format) ----------
+    function xesc(s) {
+      return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    const CRC_TABLE = (() => {
+      const t = new Int32Array(256);
+      for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c; }
+      return t;
+    })();
+    function crc32(bytes) {
+      let c = 0xFFFFFFFF;
+      for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+      return (c ^ 0xFFFFFFFF) >>> 0;
+    }
+    function zipStore(entries, mimeType) {
+      const enc = new TextEncoder();
+      let offset = 0;
+      const chunks = [], central = [];
+      for (const e of entries) {
+        const nameBytes = enc.encode(e.name);
+        const crc = crc32(e.data), size = e.data.length;
+        const lh = new DataView(new ArrayBuffer(30));
+        lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+        lh.setUint32(14, crc, true); lh.setUint32(18, size, true); lh.setUint32(22, size, true);
+        lh.setUint16(26, nameBytes.length, true);
+        chunks.push(new Uint8Array(lh.buffer), nameBytes, e.data);
+        const ch = new DataView(new ArrayBuffer(46));
+        ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+        ch.setUint32(16, crc, true); ch.setUint32(20, size, true); ch.setUint32(24, size, true);
+        ch.setUint16(28, nameBytes.length, true); ch.setUint32(42, offset, true);
+        central.push({ header: new Uint8Array(ch.buffer), nameBytes });
+        offset += 30 + nameBytes.length + size;
+      }
+      const centralStart = offset;
+      let centralSize = 0;
+      for (const c of central) { chunks.push(c.header, c.nameBytes); centralSize += 46 + c.nameBytes.length; }
+      const end = new DataView(new ArrayBuffer(22));
+      end.setUint32(0, 0x06054b50, true);
+      end.setUint16(8, central.length, true); end.setUint16(10, central.length, true);
+      end.setUint32(12, centralSize, true); end.setUint32(16, centralStart, true);
+      chunks.push(new Uint8Array(end.buffer));
+      return new Blob(chunks, { type: mimeType || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    }
+    function docxTitle(text) {
+      return '<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="12" w:space="4" w:color="0F4761"/></w:pBdr><w:spacing w:before="160" w:after="80"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Aptos Display" w:hAnsi="Aptos Display"/><w:b/><w:color w:val="0F4761"/><w:sz w:val="32"/></w:rPr><w:t xml:space="preserve">' + xesc(text) + '</w:t></w:r></w:p>';
+    }
+    function docxHead(text) {
+      return '<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="2" w:color="BFC9D5"/></w:pBdr><w:spacing w:before="160" w:after="80"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Aptos Display" w:hAnsi="Aptos Display"/><w:b/><w:color w:val="0F4761"/><w:sz w:val="28"/></w:rPr><w:t xml:space="preserve">' + xesc(text) + '</w:t></w:r></w:p>';
+    }
+    function docxBody(text) {
+      return String(text == null ? '' : text).split('\n').map(line =>
+        '<w:p><w:pPr><w:spacing w:before="100" w:after="100"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="24"/></w:rPr><w:t xml:space="preserve">' + xesc(line) + '</w:t></w:r></w:p>').join('');
+    }
+    function docxMeta(text) {
+      return '<w:p><w:pPr><w:spacing w:before="40" w:after="120"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:color w:val="595959"/><w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">' + xesc(text) + '</w:t></w:r></w:p>';
+    }
+    const DOCX_TBL_BORDERS = '<w:tblBorders><w:top w:val="single" w:sz="6" w:space="0" w:color="A6B0BC"/><w:left w:val="single" w:sz="6" w:space="0" w:color="A6B0BC"/><w:bottom w:val="single" w:sz="6" w:space="0" w:color="A6B0BC"/><w:right w:val="single" w:sz="6" w:space="0" w:color="A6B0BC"/><w:insideH w:val="single" w:sz="6" w:space="0" w:color="A6B0BC"/><w:insideV w:val="single" w:sz="6" w:space="0" w:color="A6B0BC"/></w:tblBorders>';
+    const DOCX_TBL_CELLMAR = '<w:tblCellMar><w:top w:w="30" w:type="dxa"/><w:left w:w="90" w:type="dxa"/><w:bottom w:w="30" w:type="dxa"/><w:right w:w="90" w:type="dxa"/></w:tblCellMar>';
+    function docxInfoCell(width, text, opts) {
+      opts = opts || {};
+      const sz = opts.sz || 23;
+      const shd = opts.shade ? '<w:shd w:val="clear" w:color="auto" w:fill="E8EEF3"/>' : '';
+      const b = opts.bold ? '<w:b/>' : '';
+      return '<w:tc><w:tcPr><w:tcW w:w="' + width + '" w:type="dxa"/>' + shd + '<w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:spacing w:before="20" w:after="20"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/>' + b + '<w:sz w:val="' + sz + '"/></w:rPr><w:t xml:space="preserve">' + xesc(text) + '</w:t></w:r></w:p></w:tc>';
+    }
+    function docxInfoTable(rows) {
+      let t = '<w:tbl><w:tblPr><w:tblW w:w="9360" w:type="dxa"/>' + DOCX_TBL_BORDERS + '<w:tblLayout w:type="fixed"/>' + DOCX_TBL_CELLMAR + '</w:tblPr><w:tblGrid><w:gridCol w:w="1700"/><w:gridCol w:w="7660"/></w:tblGrid>';
+      for (const r of rows) t += '<w:tr>' + docxInfoCell(1700, r[0], { shade: true }) + docxInfoCell(7660, r[1], {}) + '</w:tr>';
+      return t + '</w:tbl>';
+    }
+    const DOCX_STYLES_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="24"/></w:rPr></w:rPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>';
+    function hdrTrunc(s, n) {
+      s = String(s == null ? '' : s);
+      return s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s;
+    }
+    function docxHeaderXml(rightText, tabPos) {
+      const rpr = '<w:rFonts w:ascii="Aptos Display" w:hAnsi="Aptos Display"/><w:caps/><w:color w:val="0F4761"/><w:sz w:val="22"/>';
+      return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+        '<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="4" w:color="0F4761"/></w:pBdr><w:tabs><w:tab w:val="right" w:pos="' + tabPos + '"/></w:tabs><w:spacing w:after="80"/></w:pPr><w:r><w:rPr>' + rpr + '</w:rPr><w:t xml:space="preserve">Sentinel Portal</w:t></w:r><w:r><w:rPr>' + rpr + '</w:rPr><w:tab/></w:r><w:r><w:rPr>' + rpr + '</w:rPr><w:t xml:space="preserve">' + xesc(hdrTrunc(rightText, 64)) + '</w:t></w:r></w:p></w:hdr>';
+    }
+    function docxFooterXml(leftText, tabPos) {
+      const rpr = '<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:color w:val="595959"/><w:sz w:val="20"/>';
+      const fld = (instr) => '<w:fldSimple w:instr=" ' + instr + ' "><w:r><w:rPr>' + rpr + '</w:rPr><w:t>1</w:t></w:r></w:fldSimple>';
+      return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+        '<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:p><w:pPr><w:pBdr><w:top w:val="single" w:sz="4" w:space="4" w:color="A6B0BC"/></w:pBdr><w:tabs><w:tab w:val="right" w:pos="' + tabPos + '"/></w:tabs><w:spacing w:before="80"/></w:pPr><w:r><w:rPr>' + rpr + '</w:rPr><w:t xml:space="preserve">' + xesc(hdrTrunc(leftText, 64)) + '</w:t></w:r><w:r><w:rPr>' + rpr + '</w:rPr><w:tab/></w:r><w:r><w:rPr>' + rpr + '</w:rPr><w:t xml:space="preserve">Page </w:t></w:r>' + fld('PAGE') + '<w:r><w:rPr>' + rpr + '</w:rPr><w:t xml:space="preserve"> of </w:t></w:r>' + fld('NUMPAGES') + '</w:p></w:ftr>';
+    }
+    function filterSummary() {
+      const parts = [];
+      const sev = document.getElementById('filterSeverity').value;
+      const cat = document.getElementById('filterCategory').value;
+      const from = document.getElementById('filterFrom').value;
+      const to = document.getElementById('filterTo').value;
+      const q = document.getElementById('filterSearch').value.trim();
+      if (sev) parts.push('Severity: ' + sev);
+      if (cat) parts.push('Category: ' + cat);
+      if (from) parts.push('From: ' + from);
+      if (to) parts.push('To: ' + to);
+      if (q) parts.push('Search: ' + q);
+      return parts.length ? parts.join(' · ') : 'No filters — all loaded flags';
+    }
+    function flagDetailRows(f) {
+      return [
+        ['Severity:', f.severity || ''],
+        ['Category:', f.category || ''],
+        ['Contact:', (f.contact_label || '') + (f.address ? ' · ' + f.address : '')],
+        ['Source:', (f.source || '') + (f.app_pkg ? ' (' + f.app_pkg + ')' : '')],
+        ['Direction:', f.direction || ''],
+        ['Rule matched:', f.rule || ''],
+        ['Device time:', fmtChicago(f.device_ts)],
+        ['Received:', fmtChicago(f.received_at)],
+        ['Notes:', annotationsText(f)]
+      ];
+    }
+    function buildDocxBlob() {
+      const enc = new TextEncoder();
+      let bodyXml = docxTitle('Sentinel Flag Report');
+      bodyXml += docxMeta('Report generated: ' + fmtChicago(new Date().toISOString()) + ' · ' + filteredFlags.length + ' flag' + (filteredFlags.length === 1 ? '' : 's'));
+      bodyXml += docxBody('Filters: ' + filterSummary());
+      bodyXml += docxBody('Sentinel reports only — it cannot block anything. Roblox in-game chat is not visible to Sentinel. AI check results in this report are advisory only.');
+      if (!filteredFlags.length) {
+        bodyXml += docxBody('No flags match the current filters.');
+      }
+      for (const f of filteredFlags) {
+        bodyXml += docxHead((f.severity || '') + ' — ' + (f.category || 'Flag') + ' — ' + (f.contact_label || f.address || ''));
+        bodyXml += docxInfoTable(flagDetailRows(f));
+        bodyXml += docxHead('Snippet');
+        bodyXml += docxBody(f.snippet || '—');
+        bodyXml += docxHead('Full text');
+        bodyXml += docxBody(f.full_text || '—');
+        bodyXml += docxHead('Context');
+        bodyXml += docxBody(f.context || '—');
+        if (f.ai_verdict) {
+          bodyXml += docxHead('AI check (advisory only)');
+          bodyXml += docxBody('Classification: ' + f.ai_verdict + '\nSummary: ' + (f.ai_summary || '') + '\nSuggested action: ' + (f.ai_action || '') + '\nChecked: ' + fmtChicago(f.ai_at));
+        }
+      }
+      const documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>' + bodyXml +
+        '<w:sectPr><w:headerReference w:type="default" r:id="rId2"/><w:footerReference w:type="default" r:id="rId3"/><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>';
+      const contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/></Types>';
+      const rootRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>';
+      const docRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/></Relationships>';
+      const entries = [
+        { name: '[Content_Types].xml', data: enc.encode(contentTypes) },
+        { name: '_rels/.rels', data: enc.encode(rootRels) },
+        { name: 'word/document.xml', data: enc.encode(documentXml) },
+        { name: 'word/styles.xml', data: enc.encode(DOCX_STYLES_XML) },
+        { name: 'word/header1.xml', data: enc.encode(docxHeaderXml('Flag Report', 9360)) },
+        { name: 'word/footer1.xml', data: enc.encode(docxFooterXml('Sentinel Flag Report', 9360)) },
+        { name: 'word/_rels/document.xml.rels', data: enc.encode(docRels) }
+      ];
+      return zipStore(entries);
+    }
+    function buildReportHtml() {
+      const H2 = "font-family:'Aptos Display',Aptos,sans-serif;font-size:14pt;color:#0F4761;margin:8pt 0 4pt 0;border-bottom:1.5pt solid #BFC9D5;padding-bottom:2pt;";
+      const shellHead = '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12pt;border-bottom:2pt solid #0F4761;padding-bottom:4pt;">' +
+        '<span style="font-family:\'Aptos Display\',Aptos,sans-serif;font-size:13pt;font-weight:bold;color:#0F4761;">SENTINEL PORTAL</span>' +
+        '<span style="font-family:\'Aptos Display\',Aptos,sans-serif;font-size:11pt;color:#0F4761;text-align:right;">Flag Report</span></div>';
+      const shellFoot = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12pt;border-top:1pt solid #A6B0BC;padding-top:3pt;font-family:\'Times New Roman\',Times,serif;font-size:9pt;color:#595959;"><span>Sentinel Flag Report</span><span>Advisory AI results are not findings of fact</span></div>';
+      const tdL = 'border:1pt solid #A6B0BC;background:#E8EEF3;font-weight:bold;width:28%;padding:2pt 6pt;vertical-align:top;';
+      const tdV = 'border:1pt solid #A6B0BC;padding:2pt 6pt;vertical-align:top;';
+      const para = (t) => String(t == null ? '' : t).split('\n').map(l => '<p style="margin:0 0 5pt 0;">' + escHtml(l) + '</p>').join('');
+      let flagsHtml = '';
+      if (!filteredFlags.length) flagsHtml = '<p style="margin:0 0 5pt 0;">No flags match the current filters.</p>';
+      for (const f of filteredFlags) {
+        const rows = flagDetailRows(f).map(r => '<tr><td style="' + tdL + '">' + escHtml(r[0]) + '</td><td style="' + tdV + '">' + escHtml(r[1]) + '</td></tr>').join('');
+        flagsHtml +=
+          '<h2 style="' + H2 + '">' + escHtml((f.severity || '') + ' — ' + (f.category || 'Flag') + ' — ' + (f.contact_label || f.address || '')) + '</h2>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:11.5pt;margin:0 0 6pt 0;">' + rows + '</table>' +
+          '<h2 style="' + H2 + '">Snippet</h2>' + para(f.snippet || '—') +
+          '<h2 style="' + H2 + '">Full text</h2>' + para(f.full_text || '—') +
+          '<h2 style="' + H2 + '">Context</h2>' + para(f.context || '—') +
+          (f.ai_verdict
+            ? '<h2 style="' + H2 + '">AI check (advisory only)</h2>' + para('Classification: ' + f.ai_verdict + '\nSummary: ' + (f.ai_summary || '') + '\nSuggested action: ' + (f.ai_action || '') + '\nChecked: ' + fmtChicago(f.ai_at))
+            : '');
+      }
+      return '<div style="font-family:\'Times New Roman\',Times,serif;font-size:12pt;line-height:1.15;color:#000;">' +
+        '<table class="print-shell" style="width:100%;border-collapse:collapse;border:none;">' +
+        '<thead><tr><td style="padding:0 0 10pt 0;border:none;">' + shellHead + '</td></tr></thead>' +
+        '<tbody><tr><td style="padding:0;border:none;">' +
+        '<h1 style="font-family:\'Aptos Display\',Aptos,sans-serif;font-size:16pt;font-weight:bold;color:#0F4761;margin:8pt 0 4pt 0;border-bottom:2.5pt solid #0F4761;padding-bottom:3pt;">Sentinel Flag Report</h1>' +
+        '<p style="margin:0 0 6pt 0;font-size:10pt;color:#595959;">Report generated: ' + escHtml(fmtChicago(new Date().toISOString())) + ' · ' + filteredFlags.length + ' flag' + (filteredFlags.length === 1 ? '' : 's') + '</p>' +
+        '<p style="margin:0 0 5pt 0;">Filters: ' + escHtml(filterSummary()) + '</p>' +
+        '<p style="margin:0 0 5pt 0;">Sentinel reports only — it cannot block anything. Roblox in-game chat is not visible to Sentinel. AI check results in this report are advisory only.</p>' +
+        flagsHtml +
+        '</td></tr></tbody>' +
+        '<tfoot><tr><td style="padding:10pt 0 0 0;border:none;">' + shellFoot + '</td></tr></tfoot>' +
+        '</table></div>';
+    }
+    function downloadBlob(blob, name) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    }
+    function reportStamp() {
+      const d = new Date();
+      const p = (n) => String(n).padStart(2, '0');
+      return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes());
+    }
+    document.getElementById('exportDocxBtn').addEventListener('click', () => {
+      const status = document.getElementById('exportStatus');
+      try {
+        downloadBlob(buildDocxBlob(), 'sentinel-flag-report-' + reportStamp() + '.docx');
+        status.textContent = 'Word report downloaded (' + filteredFlags.length + ' flags).';
+      } catch (e) {
+        console.error('Word export error:', e);
+        status.textContent = 'Word export failed: ' + e.message;
+      }
+    });
+    document.getElementById('exportPdfBtn').addEventListener('click', () => {
+      document.getElementById('printArea').innerHTML = buildReportHtml();
+      document.getElementById('exportStatus').textContent = 'Print window opened — choose "Save as PDF".';
+      setTimeout(() => window.print(), 150);
+    });
+
+    initAuth();
+  </script>
+</body>
+</html>
